@@ -3,9 +3,12 @@ import { send as smtpSend } from 'edgeport/smtp';
 
 export class ImapAdapter {
   constructor(
-    private imapHost: string, private imapPort: number,
-    private smtpHost: string, private smtpPort: number,
-    private username: string, private password: string
+    private imapHost: string,
+    private imapPort: number,
+    private smtpHost: string,
+    private smtpPort: number,
+    private username: string,
+    private password: string
   ) {}
 
   async fetchInbox(count = 10) {
