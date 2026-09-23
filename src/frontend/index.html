@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>统一邮件管理</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    h1 { font-size: 24px; }
+    .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .account-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+    .account-item:last-child { border-bottom: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 8px; }
+    .badge-gmail { background: #fef2f2; color: #dc2626; }
+    .badge-outlook { background: #eff6ff; color: #2563eb; }
+    .badge-imap { background: #f0fdf4; color: #16a34a; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 13px; margin-bottom: 4px; color: #666; }
+    .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .message-list { max-height: 400px; overflow-y: auto; }
+    .message-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+    .message-item:hover { background: #fafafa; }
+    .message-subject { font-weight: 500; font-size: 14px; }
+    .message-meta { font-size: 12px; color: #888; margin-top: 2px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; background: #e5e7eb; }
+    .tab.active { background: #2563eb; color: white; }
+    .hidden { display: none; }
+    #compose { position: fixed; bottom: 0; right: 0; width: 400px; background: white; border-radius: 12px 0 0 0; box-shadow: -2px -2px 12px rgba(0,0,0,0.15); padding: 16px; }
+    textarea { width: 100%; height: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; resize: vertical; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📬 统一邮件管理</h1>
+      <button class="btn btn-primary" onclick="showAddForm()">+ 添加邮箱</button>
+    </header>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('accounts')">账户管理</div>
+      <div class="tab" onclick="switchTab('inbox')">收件箱</div>
+    </div>
+
+    <!-- 账户管理面板 -->
+    <div id="panel-accounts">
+      <div class="card">
+        <h2 style="font-size:16px;margin-bottom:12px;">已连接的邮箱</h2>
+        <div id="account-list">加载中...</div>
+      </div>
+
+      <div id="add-form" class="card hidden">
+        <h2 style="font-size:16px;margin-bottom:12px;">添加邮箱账户</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label>邮箱地址</label>
+            <input id="acc-email" type="email" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label>提供商类型</label>
+            <select id="acc-provider" onchange="toggleProviderFields()">
+              <option value="imap">通用 IMAP/SMTP</option>
+              <option value="gmail">Gmail (OAuth)</option>
+              <option value="outlook">Outlook (OAuth)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="imap-fields">
+          <div class="form-row">
+            <div class="form-group">
+              <label>IMAP 服务器</label>
+              <input id="imap-host" placeholder="imap.example.com">
+            </div>
+            <div class="form-group">
+              <label>IMAP 端口</label>
+              <input id="imap-port" value="993" type="number">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>SMTP 服务器</label>
+              <input id="smtp-host" placeholder="smtp.example.com">
+            </div>
+            <div class="form-group">
+              <label>SMTP 端口</label>
+              <input id="smtp-port" value="465" type="number">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>密码 / 应用专用密码</label>
+            <input id="acc-password" type="password">
+          </div>
+        </div>
+
+        <div id="oauth-fields" class="hidden">
+          <p style="font-size:13px;color:#666;margin-bottom:12px;">
+            点击下方按钮将跳转到对应的 OAuth 授权页面。
+          </p>
+          <button class="btn btn-primary" onclick="startOAuth()">开始授权</button>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="saveAccount()">保存</button>
+          <button class="btn" style="background:#e5e7eb;" onclick="hideAddForm()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 收件箱面板 -->
+    <div id="panel-inbox" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+          <h2 style="font-size:16px;">收件箱</h2>
+          <select id="inbox-account" onchange="loadMessages()" style="padding:6px 12px;border-radius:6px;border:1px solid #ddd;">
+            <option value="">选择账户...</option>
+          </select>
+        </div>
+        <div id="message-list" class="message-list"></div>
+      </div>
+      <button class="btn btn-primary" onclick="showCompose()" style="position:fixed;bottom:20px;right:20px;">✉️ 写邮件</button>
+    </div>
+  </div>
+
+  <!-- 写邮件面板 -->
+  <div id="compose" class="hidden">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+      <strong>写邮件</strong>
+      <button class="btn btn-sm" onclick="hideCompose()">✕</button>
+    </div>
+    <div class="form-group">
+      <label>收件人</label>
+      <input id="compose-to" type="email" placeholder="recipient@example.com">
+    </div>
+    <div class="form-group">
+      <label>主题</label>
+      <input id="compose-subject">
+    </div>
+    <div class="form-group">
+      <label>正文</label>
+      <textarea id="compose-body"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="sendMail()">发送</button>
+  </div>
+
+  <script>
+    let accounts = [];
+    let currentAccountId = null;
+
+    async function loadAccounts() {
+      const res = await fetch('/api/accounts');
+      accounts = await res.json();
+      const list = document.getElementById('account-list');
+      const select = document.getElementById('inbox-account');
+
+      if (accounts.length === 0) {
+        list.innerHTML = '<p style="color:#888;">还没有添加任何邮箱账户。</p>';
+      } else {
+        list.innerHTML = accounts.map(a => `
+          <div class="account-item">
+            <div>
+              <strong>${a.email}</strong>
+              <span class="badge badge-${a.provider}">${a.provider}</span>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}')">删除</button>
+          </div>
+        `).join('');
+      }
+
+      select.innerHTML = '<option value="">选择账户...</option>' +
+        accounts.map(a => `<option value="${a.id}">${a.email}</option>`).join('');
+    }
+
+    async function deleteAccount(id) {
+      if (!confirm('确定要删除这个账户吗？')) return;
+      await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+      loadAccounts();
+    }
+
+    function showAddForm() { document.getElementById('add-form').classList.remove('hidden'); }
+    function hideAddForm() { document.getElementById('add-form').classList.add('hidden'); }
+
+    function toggleProviderFields() {
+      const provider = document.getElementById('acc-provider').value;
+      document.getElementById('imap-fields').classList.toggle('hidden', provider !== 'imap');
+      document.getElementById('oauth-fields').classList.toggle('hidden', provider === 'imap');
+    }
+
+    async function saveAccount() {
+      const provider = document.getElementById('acc-provider').value;
+      if (provider === 'imap') {
+        const body = {
+          email: document.getElementById('acc-email').value,
+          imap_host: document.getElementById('imap-host').value,
+          imap_port: parseInt(document.getElementById('imap-port').value),
+          smtp_host: document.getElementById('smtp-host').value,
+          smtp_port: parseInt(document.getElementById('smtp-port').value),
+          password: document.getElementById('acc-password').value,
+        };
+        await fetch('/api/accounts/imap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      }
+      hideAddForm();
+      loadAccounts();
+    }
+
+    function startOAuth() {
+      const provider = document.getElementById('acc-provider').value;
+      if (provider === 'gmail') {
+        const params = new URLSearchParams({
+          client_id: 'YOUR_GOOGLE_CLIENT_ID',
+          redirect_uri: `${location.origin}/oauth/gmail/callback`,
+          response_type: 'code',
+          scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send',
+          access_type: 'offline',
+          prompt: 'consent',
+        });
+        location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+      }
+    }
+
+    async function loadMessages() {
+      const accountId = document.getElementById('inbox-account').value;
+      if (!accountId) return;
+      const res = await fetch(`/api/accounts/${accountId}/messages`);
+      const messages = await res.json();
+      const list = document.getElementById('message-list');
+
+      if (!Array.isArray(messages) || messages.length === 0) {
+        list.innerHTML = '<p style="color:#888;padding:20px;">没有邮件</p>';
+        return;
+      }
+
+      list.innerHTML = messages.map(m => `
+        <div class="message-item">
+          <div class="message-subject">${m.subject || '(无主题)'}</div>
+          <div class="message-meta">${m.from || m.from_addr || ''} · ${new Date(m.date || m.receivedDateTime || Date.now()).toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+
+    function showCompose() { document.getElementById('compose').classList.remove('hidden'); }
+    function hideCompose() { document.getElementById('compose').classList.add('hidden'); }
+
+    async function sendMail() {
+      const accountId = document.getElementById('inbox-account').value;
+      if (!accountId) { alert('请先选择一个账户'); return; }
+      await fetch(`/api/accounts/${accountId}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: document.getElementById('compose-to').value,
+          subject: document.getElementById('compose-subject').value,
+          body: document.getElementById('compose-body').value,
+        }),
+      });
+      hideCompose();
+      alert('邮件已发送');
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('panel-accounts').classList.toggle('hidden', tab !== 'accounts');
+      document.getElementById('panel-inbox').classList.toggle('hidden', tab !== 'inbox');
+    }
+
+    loadAccounts();
+  </script>
+</body>
+        </html>
