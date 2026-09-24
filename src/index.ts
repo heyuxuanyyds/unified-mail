@@ -3,6 +3,7 @@ import { GmailAdapter } from './adapters/gmail';
 import { GraphAdapter } from './adapters/graph';
 import { ImapAdapter } from './adapters/imap';
 import { encrypt, decrypt } from './crypto';
+import { getCookie, setCookie } from 'hono/cookie';
 
 type Env = {
   DB: D1Database;
@@ -44,7 +45,7 @@ app.get('/', (c) => {
     <input id="smtp_host" placeholder="SMTP 服务器 (例如: smtp.qq.com)">
     <input id="smtp_port" value="465" placeholder="SMTP 端口">
     <input id="password" type="password" placeholder="密码或授权码">
-    <button onclick="addAccount()">保存邮箱</button>
+    <button id="btn-save">保存邮箱</button>
   </div>
 
   <div class="card">
@@ -53,24 +54,9 @@ app.get('/', (c) => {
   </div>
 
   <script>
-    async function loadAccounts() {
-      const res = await fetch('/api/accounts');
-      const accounts = await res.json();
-      const list = document.getElementById('account-list');
-      if (!accounts || accounts.length === 0) {
-        list.innerHTML = '<p style="color:#888;">还没有添加任何邮箱。</p>';
-        return;
-      }
-      list.innerHTML = accounts.map(a => \`
-        <div class="account-item">
-          <span>\\\${a.email} (\\\${a.provider})</span>
-          <button class="btn-del" onclick="deleteAccount('\\\${a.id}')">删除</button>
-        </div>
-      \`).join('');
-    }
-
-    async function addAccount() {
-      const body = {
+    // 绑定保存按钮
+    document.getElementById('btn-save').addEventListener('click', function() {
+      var body = {
         email: document.getElementById('email').value,
         imap_host: document.getElementById('imap_host').value,
         imap_port: parseInt(document.getElementById('imap_port').value),
@@ -78,23 +64,53 @@ app.get('/', (c) => {
         smtp_port: parseInt(document.getElementById('smtp_port').value),
         password: document.getElementById('password').value
       };
-      const res = await fetch('/api/accounts/imap', {
+      fetch('/api/accounts/imap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
+      }).then(function(res) {
+        if (res.ok) {
+          alert('添加成功！');
+          loadAccounts();
+        } else {
+          alert('添加失败，请检查密码或服务器配置');
+        }
       });
-      if (res.ok) {
-        alert('添加成功！');
-        loadAccounts();
-      } else {
-        alert('添加失败，请检查密码或服务器配置');
-      }
-    }
+    });
 
-    async function deleteAccount(id) {
-      if (!confirm('确定删除吗？')) return;
-      await fetch('/api/accounts/' + id, { method: 'DELETE' });
-      loadAccounts();
+    // 绑定删除按钮（事件代理，手机端最安全）
+    document.getElementById('account-list').addEventListener('click', function(e) {
+      if (e.target.classList.contains('btn-del')) {
+        var id = e.target.getAttribute('data-id');
+        if (confirm('确定删除吗？')) {
+          fetch('/api/accounts/' + id, { method: 'DELETE' }).then(function() {
+            loadAccounts();
+          });
+        }
+      }
+    });
+
+    // 加载列表函数（完全避开反引号和模板字符串，手机端极度安全）
+    function loadAccounts() {
+      fetch('/api/accounts')
+        .then(function(res) { return res.json(); })
+        .then(function(accounts) {
+          var list = document.getElementById('account-list');
+          if (!accounts || accounts.length === 0) {
+            list.innerHTML = '<p style="color:#888;">还没有添加任何邮箱。</p>';
+            return;
+          }
+          var htmlStr = '';
+          for (var i = 0; i < accounts.length; i++) {
+            var a = accounts[i];
+            htmlStr += '<div class="account-item">';
+            htmlStr += '<span>' + a.email + ' (' + a.provider + ')</span>';
+            // 使用 data-id 属性，完美避开单双引号嵌套问题
+            htmlStr += '<button class="btn-del" data-id="' + a.id + '">删除</button>';
+            htmlStr += '</div>';
+          }
+          list.innerHTML = htmlStr;
+        });
     }
 
     loadAccounts();
@@ -102,6 +118,45 @@ app.get('/', (c) => {
 </body>
 </html>
   `);
+});
+
+// 1. 登录接口：验证 ADMIN_PASSWORD 并设置 Cookie
+app.post('/api/login', async (c) => {
+  const body = await c.req.json();
+  if (body.password === c.env.ADMIN_PASSWORD) {
+    setCookie(c, 'auth_token', c.env.ADMIN_PASSWORD, {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      maxAge: 60 * 60 * 24 * 7, 
+    });
+    return c.json({ success: true });
+  }
+  return c.json({ success: false, error: '密码错误' }, 401);
+});
+
+app.post('/api/logout', (c) => {
+  setCookie(c, 'auth_token', '', { path: '/', maxAge: 0 });
+  return c.json({ success: true });
+});
+
+app.use('/api/*', async (c, next) => {
+  if (c.req.path === '/api/login' || c.req.path === '/api/logout') {
+    return await next();
+  }
+  
+  const token = getCookie(c, 'auth_token');
+  if (!token || token !== c.env.ADMIN_PASSWORD) {
+    return c.json({ error: '未经授权的访问，请先登录' }, 401);
+  }
+  
+  await next();
+});
+
+app.delete('/api/accounts/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM accounts WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
 });
 
 app.get('/api/accounts', async (c) => {
