@@ -18,18 +18,90 @@ type Env = {
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/', (c) => {
-  return c.html(`<!DOCTYPE html>
+  return c.html(`
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Unified Mail</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
+    .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    input, select { width: 100%; padding: 8px; margin: 8px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    button { background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 4px; width: 100%; font-size: 16px; }
+    .account-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+    .btn-del { background: #dc2626; width: auto; padding: 4px 10px; font-size: 12px; }
+  </style>
 </head>
 <body>
-  <h1>Unified Mail 管理后台</h1>
-  <p>部署成功！请访问 <a href="/api/accounts">/api/accounts</a> 查看账户列表。</p>
-  <p>或者把完整的 index.html 内容替换到这里。</p>
+  <h2>📬 统一邮件管理</h2>
+  <div class="card">
+    <h3>添加通用 IMAP 邮箱</h3>
+    <input id="email" placeholder="邮箱地址 (例如: 12345@qq.com)">
+    <input id="imap_host" placeholder="IMAP 服务器 (例如: imap.qq.com)">
+    <input id="imap_port" value="993" placeholder="IMAP 端口">
+    <input id="smtp_host" placeholder="SMTP 服务器 (例如: smtp.qq.com)">
+    <input id="smtp_port" value="465" placeholder="SMTP 端口">
+    <input id="password" type="password" placeholder="密码或授权码">
+    <button onclick="addAccount()">保存邮箱</button>
+  </div>
+
+  <div class="card">
+    <h3>已连接的邮箱</h3>
+    <div id="account-list">加载中...</div>
+  </div>
+
+  <script>
+    async function loadAccounts() {
+      const res = await fetch('/api/accounts');
+      const accounts = await res.json();
+      const list = document.getElementById('account-list');
+      if (!accounts || accounts.length === 0) {
+        list.innerHTML = '<p style="color:#888;">还没有添加任何邮箱。</p>';
+        return;
+      }
+      list.innerHTML = accounts.map(a => \`
+        <div class="account-item">
+          <span>\\\${a.email} (\\\${a.provider})</span>
+          <button class="btn-del" onclick="deleteAccount('\\\${a.id}')">删除</button>
+        </div>
+      \`).join('');
+    }
+
+    async function addAccount() {
+      const body = {
+        email: document.getElementById('email').value,
+        imap_host: document.getElementById('imap_host').value,
+        imap_port: parseInt(document.getElementById('imap_port').value),
+        smtp_host: document.getElementById('smtp_host').value,
+        smtp_port: parseInt(document.getElementById('smtp_port').value),
+        password: document.getElementById('password').value
+      };
+      const res = await fetch('/api/accounts/imap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        alert('添加成功！');
+        loadAccounts();
+      } else {
+        alert('添加失败，请检查密码或服务器配置');
+      }
+    }
+
+    async function deleteAccount(id) {
+      if (!confirm('确定删除吗？')) return;
+      await fetch('/api/accounts/' + id, { method: 'DELETE' });
+      loadAccounts();
+    }
+
+    loadAccounts();
+  </script>
 </body>
-</html>`);
+</html>
+  `);
 });
 
 app.get('/api/accounts', async (c) => {
