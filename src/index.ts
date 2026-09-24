@@ -37,24 +37,53 @@ app.get('/', (c) => {
 </head>
 <body>
   <h2>📬 统一邮件管理</h2>
-  <div class="card">
-    <h3>添加通用 IMAP 邮箱</h3>
-    <input id="email" placeholder="邮箱地址 (例如: 12345@qq.com)">
-    <input id="imap_host" placeholder="IMAP 服务器 (例如: imap.qq.com)">
-    <input id="imap_port" value="993" placeholder="IMAP 端口">
-    <input id="smtp_host" placeholder="SMTP 服务器 (例如: smtp.qq.com)">
-    <input id="smtp_port" value="465" placeholder="SMTP 端口">
-    <input id="password" type="password" placeholder="密码或授权码">
-    <button id="btn-save">保存邮箱</button>
+
+  <!-- 登录卡片 -->
+  <div id="login-card" class="card">
+    <h3>管理员登录</h3>
+    <input id="admin-pwd" type="password" placeholder="请输入管理密码 (ADMIN_PASSWORD)">
+    <button id="btn-login">登录</button>
   </div>
 
-  <div class="card">
-    <h3>已连接的邮箱</h3>
-    <div id="account-list">加载中...</div>
+  <!-- 主内容区（默认隐藏） -->
+  <div id="main-content" style="display:none;">
+    <div class="card">
+      <h3>添加通用 IMAP 邮箱</h3>
+      <input id="email" placeholder="邮箱地址 (例如: 12345@qq.com)">
+      <input id="imap_host" placeholder="IMAP 服务器 (例如: imap.qq.com)">
+      <input id="imap_port" value="993" placeholder="IMAP 端口">
+      <input id="smtp_host" placeholder="SMTP 服务器 (例如: smtp.qq.com)">
+      <input id="smtp_port" value="465" placeholder="SMTP 端口">
+      <input id="password" type="password" placeholder="密码或授权码">
+      <button id="btn-save">保存邮箱</button>
+    </div>
+
+    <div class="card">
+      <h3>已连接的邮箱</h3>
+      <div id="account-list">加载中...</div>
+    </div>
   </div>
 
   <script>
-    // 绑定保存按钮
+    // 绑定登录按钮
+    document.getElementById('btn-login').addEventListener('click', function() {
+      var pwd = document.getElementById('admin-pwd').value;
+      fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      }).then(function(res) {
+        if (res.ok) {
+          document.getElementById('login-card').style.display = 'none';
+          document.getElementById('main-content').style.display = 'block';
+          loadAccounts();
+        } else {
+          alert('密码错误');
+        }
+      });
+    });
+
+    // 绑定保存邮箱按钮
     document.getElementById('btn-save').addEventListener('click', function() {
       var body = {
         email: document.getElementById('email').value,
@@ -73,12 +102,13 @@ app.get('/', (c) => {
           alert('添加成功！');
           loadAccounts();
         } else {
-          alert('添加失败，请检查密码或服务器配置');
+          if (res.status === 401) { alert('登录已失效，请刷新页面重新登录'); }
+          else { alert('添加失败，请检查密码或服务器配置'); }
         }
       });
     });
 
-    // 绑定删除按钮（事件代理，手机端最安全）
+    // 绑定删除按钮
     document.getElementById('account-list').addEventListener('click', function(e) {
       if (e.target.classList.contains('btn-del')) {
         var id = e.target.getAttribute('data-id');
@@ -90,37 +120,39 @@ app.get('/', (c) => {
       }
     });
 
-    // 加载列表函数（完全避开反引号和模板字符串，手机端极度安全）
+    // 加载列表函数
     function loadAccounts() {
       fetch('/api/accounts')
-        .then(function(res) { return res.json(); })
-        .then(function(accounts) {
-          var list = document.getElementById('account-list');
-          if (!accounts || accounts.length === 0) {
-            list.innerHTML = '<p style="color:#888;">还没有添加任何邮箱。</p>';
+        .then(function(res) {
+          if (res.status === 401) {
+            document.getElementById('login-card').style.display = 'block';
+            document.getElementById('main-content').style.display = 'none';
             return;
           }
-          var htmlStr = '';
-          for (var i = 0; i < accounts.length; i++) {
-            var a = accounts[i];
-            htmlStr += '<div class="account-item">';
-            htmlStr += '<span>' + a.email + ' (' + a.provider + ')</span>';
-            // 使用 data-id 属性，完美避开单双引号嵌套问题
-            htmlStr += '<button class="btn-del" data-id="' + a.id + '">删除</button>';
-            htmlStr += '</div>';
-          }
-          list.innerHTML = htmlStr;
+          return res.json().then(function(accounts) {
+            var list = document.getElementById('account-list');
+            if (!accounts || accounts.length === 0) {
+              list.innerHTML = '<p style="color:#888;">还没有添加任何邮箱。</p>';
+              return;
+            }
+            var htmlStr = '';
+            for (var i = 0; i < accounts.length; i++) {
+              var a = accounts[i];
+              htmlStr += '<div class="account-item">';
+              htmlStr += '<span>' + a.email + ' (' + a.provider + ')</span>';
+              htmlStr += '<button class="btn-del" data-id="' + a.id + '">删除</button>';
+              htmlStr += '</div>';
+            }
+            list.innerHTML = htmlStr;
+          });
         });
     }
-
-    loadAccounts();
   </script>
 </body>
 </html>
   `);
 });
 
-// 1. 登录接口：验证 ADMIN_PASSWORD 并设置 Cookie
 app.post('/api/login', async (c) => {
   const body = await c.req.json();
   if (body.password === c.env.ADMIN_PASSWORD) {
