@@ -17,6 +17,21 @@ type Env = {
 
 const app = new Hono<{ Bindings: Env }>();
 
+app.get('/', (c) => {
+  return c.html(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Unified Mail</title>
+</head>
+<body>
+  <h1>Unified Mail 管理后台</h1>
+  <p>部署成功！请访问 <a href="/api/accounts">/api/accounts</a> 查看账户列表。</p>
+  <p>或者把完整的 index.html 内容替换到这里。</p>
+</body>
+</html>`);
+});
+
 app.get('/api/accounts', async (c) => {
   const { results } = await c.env.DB.prepare(
     'SELECT id, email, display_name, provider, enabled FROM accounts ORDER BY created_at DESC'
