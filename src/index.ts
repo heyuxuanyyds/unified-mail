@@ -18,6 +18,10 @@ type Env = {
 
 const app = new Hono<{ Bindings: Env }>();
 
+app.get('/', async (c) => {
+  return c.env.ASSETS.fetch(c.req.raw);
+});
+
 app.post('/api/login', async (c) => {
   const body = await c.req.json();
   if (body.password === c.env.ADMIN_PASSWORD) {
